@@ -1,0 +1,155 @@
+#CLI and Script Args
+import torch
+import argparse, os, shutil, time, sys, pyprind, pickle
+parser = argparse.ArgumentParser(description="toy mnist experiment for DR-VAE")
+parser.add_argument("--training-outcome", default='gaussian', help='what to predict')
+parser.add_argument("--training", action="store_true")
+parser.add_argument("--evaluating", action="store_true")
+parser.add_argument("--batch-size", type=int, default=128,
+                    help="batch size for training")
+args, _ = parser.parse_known_args()
+args.cuda = torch.cuda.is_available()
+args.training=True
+
+
+#############################
+# Experiment Setup          #
+#############################
+import matplotlib; matplotlib.use("Agg")
+import matplotlib.pyplot as plt; plt.ion()
+import seaborn as sns
+import pandas as pd
+import numpy as np
+import numpy.random as npr
+from drvae import misc
+from drvae.model.mlp import sigmoid
+from drvae.model.vae import LinearCycleVAE, BeatMlpCycleVAE
+from torch import nn
+output_dir = os.path.join("./mnist-output", args.training_outcome)
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
+
+#############################
+# Load Digit Data           #
+#############################
+npr.seed(42)
+from data_mnist import load_mnist, plot_images
+N, train_img, train_lab, test_img, test_lab = load_mnist()
+
+# create the confounded dataset
+def make_confounded_data(classa=4, classb=9, alpha=.75):
+    # divvy into two classes
+    aidx = train_lab==classa
+    bidx = train_lab==classb
+
+    # add +'s to the first class
+    xa = train_img[aidx]
+    xa = np.reshape(xa, (-1, 28, 28))
+    xa[:,1:4,2] = alpha
+    xa[:,2,1:4] = alpha
+    #xa[:,2,2]   = alpha
+    xa = np.reshape(xa, (xa.shape[0], -1))
+    xb = train_img[bidx]
+
+    # train images
+    X = np.row_stack([xa, xb])
+    Y = np.concatenate([np.zeros(len(xa)), np.ones(len(xb))])
+    return X, Y
+
+X, Y = make_confounded_data(classa=4, classb=9, alpha=.5)
+
+# split data --- train/test
+def split_data(X, Y, frac_train=.7, frac_val=.15):
+    rs = npr.RandomState(0)
+    idx = rs.permutation(len(X))
+    ntrain = int(frac_train*len(idx))
+    nval   = int(frac_val*len(idx))
+    ntest  = len(idx)-ntrain-nval
+    idx_train = idx[:ntrain]
+    idx_val   = idx[ntrain:(ntrain+nval)]
+    idx_test  = idx[(ntrain+nval):]
+    return (X[idx_train], X[idx_val], X[idx_test]), \
+           (Y[idx_train], Y[idx_val], Y[idx_test])
+
+Xdata, Ydata = split_data(X, Y)
+
+# plot examples
+fig, ax = plt.figure(figsize=(8,6)), plt.gca()
+plot_images(X[:10,:], ax=ax)
+fig.savefig(os.path.join(output_dir, "example-data.png"), bbox_inches='tight')
+
+# model imports
+from drvae.model.mlp import BeatMlpClassifier
+from drvae.model.vae import BeatMlpVAE, BeatMlpCycleVAE
+
+
+#################
+# Train Models  #
+#################
+
+if args.training:
+
+    #
+    # Train MLP Model
+    #
+    mlp_model = BeatMlpClassifier(data_dim=784,
+                                  n_outputs=1,
+                                  hdims=[50, 50, 50],
+                                  dropout_p=.5)
+    mlp_model.fit(Xdata, Ydata, epochs=20)
+    mlp_model.save(os.path.join(output_dir, 'discrim_model.pkl'))
+
+
+    #
+    # Train VAE
+    #
+    vae_output_dir = os.path.join(output_dir, "vae-output")
+    if not os.path.exists(vae_output_dir):
+        os.makedirs(vae_output_dir)
+    vae_kwargs = {'hdims'      : [500],
+                  'n_samples'  : 784,
+                  'n_channels' : 1,
+                  'latent_dim' : 20,
+                  'loglike_function': 'bernoulli'}
+
+    num_epochs=200
+    lr = 1e-2
+    opt_kwargs = {'lr': 1e-3,
+                  'num_epochs': 100,
+                  'log_interval': None,
+                  'epoch_log_interval': 5}
+
+    mlp_vae = BeatMlpVAE(**vae_kwargs)
+    mlp_vae.fit(Xdata, Xdata,
+                epochs=num_epochs,
+                log_interval=None,
+                epoch_log_interval = 5,
+                lr=lr,
+                output_dir = vae_output_dir)
+    mlp_vae.save(os.path.join(vae_output_dir, "vae.pkl"))
+
+    #
+    # Fit CVAE with varying betas
+    #
+    cvae_output_dir = os.path.join(output_dir, "cvae-output")
+    if not os.path.exists(cvae_output_dir):
+        os.makedirs(cvae_output_dir)
+
+    betas = [.0001, .0002, .0004, .001, .005]
+    for beta in betas:
+        print("-------- beta: %2.6f ---------"%beta)
+        odir = os.path.join(cvae_output_dir, 'beta-%2.4f'%beta)
+        if not os.path.exists(odir):
+            os.makedirs(odir)
+
+        mlp_cycle_vae = BeatMlpCycleVAE(**vae_kwargs)
+        mlp_cycle_vae.set_discrim_model(mlp_model, discrim_beta=beta)
+        mlp_cycle_vae.fit(Xdata, Xdata,
+                          epochs=num_epochs,
+                          log_interval=None,
+                          epoch_log_interval=5,
+                          lr=lr,
+                          output_dir = odir)
+        mlp_cycle_vae.save(os.path.join(odir, "cvae.pkl"))
+
