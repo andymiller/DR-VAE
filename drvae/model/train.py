@@ -238,7 +238,7 @@ def save_reconstruction(model, dataset, output_file):
     # select random data
     data_tensor, _ = dataset.tensors
     n_data = data_tensor.shape[0]
-    idx    = np.random.permutation(n_data)[:8]
+    idx    = np.random.permutation(n_data)[:10]
 
     # reconstruct data
     data_npy = data_tensor.numpy()[idx]

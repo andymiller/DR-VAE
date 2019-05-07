@@ -9,7 +9,6 @@ parser.add_argument("--batch-size", type=int, default=128,
                     help="batch size for training")
 args, _ = parser.parse_known_args()
 args.cuda = torch.cuda.is_available()
-args.training=True
 
 
 #############################
@@ -38,17 +37,17 @@ from data_mnist import load_mnist, plot_images
 N, train_img, train_lab, test_img, test_lab = load_mnist()
 
 # create the confounded dataset
-def make_confounded_data(classa=4, classb=9, alpha=.75):
+def make_confounded_data(classa=[0, 1, 2], classb=[3, 4, 5], alpha=.75):
     # divvy into two classes
-    aidx = train_lab==classa
-    bidx = train_lab==classb
+    aidx = np.isin(train_lab, classa)
+    bidx = np.isin(train_lab, classb)
 
     # add +'s to the first class
     xa = train_img[aidx]
     xa = np.reshape(xa, (-1, 28, 28))
-    xa[:,1:4,2] = alpha
-    xa[:,2,1:4] = alpha
-    #xa[:,2,2]   = alpha
+    xa[:,1:4,2] = alpha/2
+    xa[:,2,1:4] = alpha/2
+    xa[:,2,2]   = alpha
     xa = np.reshape(xa, (xa.shape[0], -1))
     xb = train_img[bidx]
 
@@ -57,7 +56,7 @@ def make_confounded_data(classa=4, classb=9, alpha=.75):
     Y = np.concatenate([np.zeros(len(xa)), np.ones(len(xb))])
     return X, Y
 
-X, Y = make_confounded_data(classa=4, classb=9, alpha=.5)
+X, Y = make_confounded_data(alpha=.5)
 
 # split data --- train/test
 def split_data(X, Y, frac_train=.7, frac_val=.15):
@@ -75,9 +74,14 @@ def split_data(X, Y, frac_train=.7, frac_val=.15):
 Xdata, Ydata = split_data(X, Y)
 
 # plot examples
+xa = X[Y==0.][:10,:]
+xb = X[Y==1.][:10,:]
 fig, ax = plt.figure(figsize=(8,6)), plt.gca()
-plot_images(X[:10,:], ax=ax)
-fig.savefig(os.path.join(output_dir, "example-data.png"), bbox_inches='tight')
+plot_images(xa, ax=ax)
+fig.savefig(os.path.join(output_dir, "example-confounded-a.png"), bbox_inches='tight')
+fig, ax = plt.figure(figsize=(8,6)), plt.gca()
+plot_images(xb, ax=ax)
+fig.savefig(os.path.join(output_dir, "example-confounded-b.png"), bbox_inches='tight')
 
 # model imports
 from drvae.model.mlp import BeatMlpClassifier
@@ -152,4 +156,9 @@ if args.training:
                           lr=lr,
                           output_dir = odir)
         mlp_cycle_vae.save(os.path.join(odir, "cvae.pkl"))
+
+
+#########################
+# Evaluating + Plots    #
+#########################
 

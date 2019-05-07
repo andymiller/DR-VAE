@@ -60,7 +60,6 @@ def load_mnist():
 def plot_images(images, ax, ims_per_row=5, padding=5, digit_dimensions=(28, 28),
                 cmap=None, vmin=None, vmax=None):
     """Images should be a (N_images x pixels) matrix."""
-
     import matplotlib.cm
     import matplotlib.pyplot as plt; plt.ion()
     if cmap is None:
