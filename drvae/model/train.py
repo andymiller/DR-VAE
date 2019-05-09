@@ -253,7 +253,10 @@ def save_reconstruction(model, dataset, output_file):
     #    recon_x = recon_x.view_as(data)
 
     # plot beat and save
-    X = recon_x.detach().numpy()
+    X = recon_x.detach()
+    if model_is_cuda:
+        X = X.cpu()
+    X = X.numpy()
     fig, ax = plt.figure(figsize=(8,6)), plt.gca()
     plot_images(X[:10,:], ax=ax)
 

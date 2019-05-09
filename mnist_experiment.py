@@ -42,6 +42,11 @@ def make_confounded_data(classa=[0, 1, 2], classb=[3, 4, 5], alpha=.75):
     aidx = np.isin(train_lab, classa)
     bidx = np.isin(train_lab, classb)
 
+    # mask for extra pixels
+    cmask = np.zeros((28, 28))
+    cmask[1:5, 1:5] = 1.
+
+
     # add +'s to the first class
     xa = train_img[aidx]
     xa = np.reshape(xa, (-1, 28, 28))
@@ -54,9 +59,34 @@ def make_confounded_data(classa=[0, 1, 2], classb=[3, 4, 5], alpha=.75):
     # train images
     X = np.row_stack([xa, xb])
     Y = np.concatenate([np.zeros(len(xa)), np.ones(len(xb))])
-    return X, Y
 
-X, Y = make_confounded_data(alpha=.5)
+    # make confounded classifier --- it pays attention only to the
+    # cross idx
+    num_mlp_hidden = 5
+    mlp_model = nn.Sequential(nn.Linear(D, num_mlp_hidden),
+                              nn.Tanh(),
+                              nn.Linear(num_mlp_hidden, 1))
+    n_adjusted = 0
+    for n, p in mlp_model.named_parameters():
+        print(n)
+        if n == "0.weight":
+            print(p.shape)
+            p.data[:, 0 ].normal_(std=4.)
+            p.data[:, num_discrim_factors:] = 0.
+            n_adjusted += 1
+        elif 'weight' in n:
+            p.data.normal_(std=.25)
+        elif n == '4.bias':
+            p.data.normal_(std=.1)
+
+    assert n_adjusted == 1, "DIDN'T FIX"
+    mlp_model.eval()
+    print("ORACLE RMSE: ", np.mean(np.sqrt(sig2[:-K])))
+    return X, Y, mlp_model
+
+X, Y, mlp_model = make_confounded_data(alpha=.5)
+
+
 
 # split data --- train/test
 def split_data(X, Y, frac_train=.7, frac_val=.15):
