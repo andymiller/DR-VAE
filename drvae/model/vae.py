@@ -190,6 +190,7 @@ class BeatMlpVAE(VAE):
         self.latent_dim = kwargs.get("latent_dim")
         self.hdims      = kwargs.get("hdims", [500])
         self.verbose    = kwargs.get("verbose", False)
+        self.sigmoid_out = kwargs.get("sigmoid_output", False)
         self.data_dim   = n_channels * n_samples
         self.data_shape = (n_channels, n_samples)
 
@@ -202,7 +203,10 @@ class BeatMlpVAE(VAE):
             modules.append(nn.Dropout())
 
         modules.append(nn.Linear(sizes[-1], self.data_dim))
-        modules.append(nn.Tanh())
+        if self.sigmoid_out:
+            modules.append(nn.Sigmoid())
+        else:
+            modules.append(nn.Tanh())
         self.decode_net = nn.Sequential(*modules)
 
         # encoder network guts (reverses the generative process)
@@ -252,7 +256,6 @@ class BeatMlpCycleVAE(BeatMlpVAE):
         self.discrim_model = [discrim_model]
         self.discrim_beta = discrim_beta
 
-    #TODO add cycle loss to the existing loss
     def lossfun(self, data, recon_data, target, mu, logvar):
         # vae ELBO loss
         vae_loss = super(BeatMlpCycleVAE, self).lossfun(
@@ -361,7 +364,7 @@ def recon_loglike_function(recon_x, x, noise_var=.01*.01):
     return ll
 
 def binary_recon_loglike_function(recon_x, x):
-    ll = F.binary_cross_entropy_with_logits(
+    ll = F.binary_cross_entropy(
         recon_x, x.view(-1, 784), reduction='none').sum(dim=-1)
     return -1.*ll
 

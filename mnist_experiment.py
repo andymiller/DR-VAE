@@ -9,6 +9,7 @@ parser.add_argument("--batch-size", type=int, default=128,
                     help="batch size for training")
 args, _ = parser.parse_known_args()
 args.cuda = torch.cuda.is_available()
+print(args)
 
 
 #############################
@@ -67,34 +68,24 @@ def make_confounded_data(classa=[0, 1, 2], classb=[3, 4, 5], alpha=.75):
     mlp_model = nn.Sequential(nn.Linear(784, num_mlp_hidden),
                               nn.Tanh(),
                               nn.Linear(num_mlp_hidden, 1))
-    n_adjusted = 0
-    w0 = mlp_model[0].weight
-    w0.data[:, np.where(cmask_flat==1.)[0] ] = 4. #.normal_(std=1.).exp_()
-    w0.data[:, np.where(cmask_flat==0.)[0] ] = 0.
-    mlp_model[0].bias[:] = -4
+    mlp_model[0].weight.data[:, np.where(cmask_flat==1.)[0] ] = 4. #.normal_(std=1.).exp_()
+    mlp_model[0].weight.data[:, np.where(cmask_flat==0.)[0] ] = 0.
+    mlp_model[0].bias.data[:] = -4
 
     # second layer, all pass through
-    w1 = mlp_model[2].weight
-    w1.data[:] = 1.
-    mlp_model[2].bias[:] = 0.
+    mlp_model[2].weight.data[:] = 1.
+    mlp_model[2].bias.data[:] = 0.
 
-    #mlp_model[0].bias.normal_(std=.1)
-    #for n, p in mlp_model.named_parameters():
-    #    print(n)
-    #    if n == "0.weight":
-    #        print(p.shape)
-    #        p.data[:, np.where(cmask_flat==1.)[0] ].normal_(std=10.)
-    #        p.data[:, np.where(cmask_flat==0.)[0] ] = 0.
-    #        n_adjusted += 1
-    #    elif 'weight' in n:
-    #        p.data.normal_(std=.25)
-    #    elif n == '4.bias':
-    #        p.data.normal_(std=.1)
-    #        p.data.zero_()
+    print(mlp_model(torch.FloatTensor(X[:100])).min())
+    print(mlp_model(torch.FloatTensor(X[:100])).max())
+    mlp_model.cuda()
 
-    mlp_model.eval()
+    #if args.cuda:
+    #    mlp_model.cuda()
+    #    #mlp_model.is_cuda = True
+    #mlp_model.eval()
     #print("ORACLE RMSE: ", np.mean(np.sqrt(sig2[:-K])))
-    return X, Y, mlp_model
+    return X, Y, mlp_model #cmask #mlp_model
 
 X, Y, mlp_model = make_confounded_data(alpha=.5)
 
@@ -144,7 +135,6 @@ if args.training:
     #mlp_model.fit(Xdata, Ydata, epochs=20)
     #mlp_model.save(os.path.join(output_dir, 'discrim_model.pkl'))
 
-
     #
     # Train VAE
     #
@@ -155,6 +145,7 @@ if args.training:
                   'n_samples'  : 784,
                   'n_channels' : 1,
                   'latent_dim' : 20,
+                  'sigmoid_output': True,
                   'loglike_function': 'bernoulli'}
 
     num_epochs=200
@@ -181,6 +172,7 @@ if args.training:
         os.makedirs(cvae_output_dir)
 
     betas = [.0001, .0002, .0004, .001, .005]
+    betas = [.01]
     for beta in betas:
         print("-------- beta: %2.6f ---------"%beta)
         odir = os.path.join(cvae_output_dir, 'beta-%2.4f'%beta)
@@ -188,6 +180,7 @@ if args.training:
             os.makedirs(odir)
 
         mlp_cycle_vae = BeatMlpCycleVAE(**vae_kwargs)
+        mlp_cycle_vae.constrain_output=True
         mlp_cycle_vae.set_discrim_model(mlp_model, discrim_beta=beta)
         mlp_cycle_vae.fit(Xdata, Xdata,
                           epochs=num_epochs,
