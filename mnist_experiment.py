@@ -44,16 +44,16 @@ def make_confounded_data(classa=[0, 1, 2], classb=[3, 4, 5], alpha=.75):
 
     # mask for extra pixels
     cmask = np.zeros((28, 28))
-    cmask[1:5, 1:5] = 1.
-
+    cmask[1:4, 2] = 1.
+    cmask[2, 1:4] = 1.
 
     # add +'s to the first class
     xa = train_img[aidx]
     xa = np.reshape(xa, (-1, 28, 28))
-    xa[:,1:4,2] = alpha/2
-    xa[:,2,1:4] = alpha/2
-    xa[:,2,2]   = alpha
+    xa += cmask[None,:,:] * (np.random.rand(len(xa), 1)[:,:, None]*alpha + .05)
     xa = np.reshape(xa, (xa.shape[0], -1))
+
+    # other class
     xb = train_img[bidx]
 
     # train images
@@ -62,31 +62,41 @@ def make_confounded_data(classa=[0, 1, 2], classb=[3, 4, 5], alpha=.75):
 
     # make confounded classifier --- it pays attention only to the
     # cross idx
-    num_mlp_hidden = 5
-    mlp_model = nn.Sequential(nn.Linear(D, num_mlp_hidden),
+    cmask_flat = cmask.flatten()
+    num_mlp_hidden = 2
+    mlp_model = nn.Sequential(nn.Linear(784, num_mlp_hidden),
                               nn.Tanh(),
                               nn.Linear(num_mlp_hidden, 1))
     n_adjusted = 0
-    for n, p in mlp_model.named_parameters():
-        print(n)
-        if n == "0.weight":
-            print(p.shape)
-            p.data[:, 0 ].normal_(std=4.)
-            p.data[:, num_discrim_factors:] = 0.
-            n_adjusted += 1
-        elif 'weight' in n:
-            p.data.normal_(std=.25)
-        elif n == '4.bias':
-            p.data.normal_(std=.1)
+    w0 = mlp_model[0].weight
+    w0.data[:, np.where(cmask_flat==1.)[0] ] = 4. #.normal_(std=1.).exp_()
+    w0.data[:, np.where(cmask_flat==0.)[0] ] = 0.
+    mlp_model[0].bias[:] = -4
 
-    assert n_adjusted == 1, "DIDN'T FIX"
+    # second layer, all pass through
+    w1 = mlp_model[2].weight
+    w1.data[:] = 1.
+    mlp_model[2].bias[:] = 0.
+
+    #mlp_model[0].bias.normal_(std=.1)
+    #for n, p in mlp_model.named_parameters():
+    #    print(n)
+    #    if n == "0.weight":
+    #        print(p.shape)
+    #        p.data[:, np.where(cmask_flat==1.)[0] ].normal_(std=10.)
+    #        p.data[:, np.where(cmask_flat==0.)[0] ] = 0.
+    #        n_adjusted += 1
+    #    elif 'weight' in n:
+    #        p.data.normal_(std=.25)
+    #    elif n == '4.bias':
+    #        p.data.normal_(std=.1)
+    #        p.data.zero_()
+
     mlp_model.eval()
-    print("ORACLE RMSE: ", np.mean(np.sqrt(sig2[:-K])))
+    #print("ORACLE RMSE: ", np.mean(np.sqrt(sig2[:-K])))
     return X, Y, mlp_model
 
 X, Y, mlp_model = make_confounded_data(alpha=.5)
-
-
 
 # split data --- train/test
 def split_data(X, Y, frac_train=.7, frac_val=.15):
@@ -127,12 +137,12 @@ if args.training:
     #
     # Train MLP Model
     #
-    mlp_model = BeatMlpClassifier(data_dim=784,
-                                  n_outputs=1,
-                                  hdims=[50, 50, 50],
-                                  dropout_p=.5)
-    mlp_model.fit(Xdata, Ydata, epochs=20)
-    mlp_model.save(os.path.join(output_dir, 'discrim_model.pkl'))
+    #mlp_model = BeatMlpClassifier(data_dim=784,
+    #                              n_outputs=1,
+    #                              hdims=[50, 50, 50],
+    #                              dropout_p=.5)
+    #mlp_model.fit(Xdata, Ydata, epochs=20)
+    #mlp_model.save(os.path.join(output_dir, 'discrim_model.pkl'))
 
 
     #
