@@ -87,7 +87,7 @@ def make_confounded_data(classa=[0, 1, 2], classb=[3, 4, 5], alpha=.75):
     #print("ORACLE RMSE: ", np.mean(np.sqrt(sig2[:-K])))
     return X, Y, mlp_model #cmask #mlp_model
 
-X, Y, mlp_model = make_confounded_data(alpha=.5)
+X, Y, mlp_model = make_confounded_data(alpha=.25)
 
 # split data --- train/test
 def split_data(X, Y, frac_train=.7, frac_val=.15):
@@ -171,8 +171,7 @@ if args.training:
     if not os.path.exists(cvae_output_dir):
         os.makedirs(cvae_output_dir)
 
-    betas = [.0001, .0002, .0004, .001, .005]
-    betas = [.01]
+    betas = [.0001, .0002, .0004, .001, .005, .01, .1, 1.]
     for beta in betas:
         print("-------- beta: %2.6f ---------"%beta)
         odir = os.path.join(cvae_output_dir, 'beta-%2.4f'%beta)
