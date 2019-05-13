@@ -355,7 +355,7 @@ class BeatMlpCondVAE(VAE):
 # Loss functions  #
 ###################
 
-def recon_loglike_function(recon_x, x, noise_var=.01*.01):
+def recon_loglike_function(recon_x, x, noise_var=.1*.1):
     num_obs_per_batch = x.shape[1]
     ln_noise_var = np.log(noise_var)
     diff = x - recon_x
