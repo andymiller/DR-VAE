@@ -129,8 +129,8 @@ if args.training:
                   'latent_dim' : 10,
                   'sigmoid_output': True,
                   'loglike_function': 'gaussian'} #bernoulli'}
-    num_epochs=400
-    lr = 3e-3
+    num_epochs=200
+    lr = 1e-3
 
     #
     # Fit CVAE with varying betas
